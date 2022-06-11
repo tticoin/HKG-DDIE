@@ -27,8 +27,6 @@ python main.py \
   --do_eval \
   --use_cls_rep \
   --use_mention_rep \
-  --save_strategy no \
-  --logging_strategy no \
   --num_train_epochs 10 \
   --learning_rate 5e-05 \
   --fp16 \
