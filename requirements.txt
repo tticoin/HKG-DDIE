@@ -1,0 +1,5 @@
+tqdm
+scikit-learn
+
+transformers==4.11.3  
+datasets==1.18.4
