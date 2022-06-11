@@ -13,6 +13,8 @@ Please download our pre-trained heterogeneous KG embedding vectors and our DDI e
 unzip weights.zip
 ```
 
+To learn more about construction of heterogeneous KG embeddings, please see our [repo.](https://github.com/tticoin/PharmaHKG-Text) and [paper](https://www.frontiersin.org/articles/10.3389/frma.2021.670206/full)
+
 ## DDI extraction
 ```
 python main.py \
@@ -43,7 +45,19 @@ python main.py \
   --combination_method cat \
   --output_dir ./outputs/foo
 ```
-or you can
+or you can reproduce the F-score in the paper using the trained model parameters we have released.
+```
+python main.py \
+  --train_file ./inputs/train.csv \
+  --validation_file ./inputs/dev.csv \
+  --train_dbid_file ./inputs/train_id.npy \
+  --validation_dbid_file ./inputs/dev_id.npy \
+  --do_eval \
+  --trained_model_file ./weights/full_model.bin \
+  --model_args_file ./weights/model_args.pkl \
+  --model_name_or_path microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract \
+  --output_dir ./outputs/foo
+```
 
 ## Acknolwedgement
 This work was supported by JSPS KAKENHI Grant Number JP20K11962.
