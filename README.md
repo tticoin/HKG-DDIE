@@ -8,6 +8,10 @@ pip install -r requirements.txt
 In addition to these pacages, please install ```torch``` according to your CUDA version.
 
 ## Preparing model weights
+Please download our pre-trained heterogeneous KG embedding vectors and our DDI extraction model full-parameters from [here](https://github.com/tticoin/HKG-DDIE/releases).
+```
+unzip weights.zip
+```
 
 ## DDI extraction
 ```
