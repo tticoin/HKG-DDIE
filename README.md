@@ -50,6 +50,7 @@ python main.py \
   --validation_file ./inputs/dev.csv \
   --train_dbid_file ./inputs/train_id.npy \
   --validation_dbid_file ./inputs/dev_id.npy \
+  --kg_emb_file ./weights/PharmaHKG_DistMult_entity.npy \
   --do_eval \
   --trained_model_file ./weights/full_model.bin \
   --model_args_file ./weights/model_args.pkl \
