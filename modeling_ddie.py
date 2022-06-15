@@ -27,9 +27,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 import torch.nn.functional as F
 
-from transformers import BertConfig, PreTrainedModel
+from transformers import BertConfig, PreTrainedModel, BertPreTrainedModel, BertModel
 
-from activations import gelu, gelu_new, swish
 from file_utils import add_start_docstrings, add_start_docstrings_to_callable
 
 
@@ -137,7 +136,7 @@ def mish(x):
     return x * torch.tanh(nn.functional.softplus(x))
 
 
-ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish, "gelu_new": gelu_new, "mish": mish}
+ACT2FN = {'gelu': F.gelu}
 
 
 BertLayerNorm = torch.nn.LayerNorm
@@ -965,12 +964,11 @@ class MyModel(BertPreTrainedModel):
         #self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
 
-    def my_init(self, model_args):
+    def init_modules(self, model_args, kg_emb_file):
         if not model_args.baseline:
             word_emb_table = self.bert.embeddings.word_embeddings.weight
-            kg_emb_table = np.load(model_args.kg_emb_file)
+            kg_emb_table = np.load(kg_emb_file)
             UNM_vec = np.zeros((1, kg_emb_table.shape[1])) # For Unmatched embeddings
-            #UNM_vec = np.mean(kg_emb_table, axis=0, keepdims=True) # For Unmatched embeddings
             kg_emb_table = torch.FloatTensor(np.concatenate((kg_emb_table, UNM_vec)))
             word_kg_emb_table = torch.cat((word_emb_table, kg_emb_table), dim=0)
             self.bert.embeddings.word_embeddings = nn.Embedding.from_pretrained(word_kg_emb_table,
@@ -995,6 +993,8 @@ class MyModel(BertPreTrainedModel):
         self.classifier = nn.Linear(self.config.hidden_size, self.num_labels)
         #self.classifier = nn.Linear(classifier_input_size, self.num_labels)
 
+
+    def init_params(self, device):
         self.current_params = {
             'bert': self.bert,
             'mention_linear': self.mention_linear,
@@ -1005,7 +1005,7 @@ class MyModel(BertPreTrainedModel):
         }
         self.accumulated_params = {}
         for k, v in self.current_params.items():
-            self.accumulated_params[k] = copy.deepcopy(v).to(model_args.device)
+            self.accumulated_params[k] = copy.deepcopy(v).to(device)
         self.update_cnt = 1
 
 
@@ -1018,10 +1018,6 @@ class MyModel(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
-        replaced_input_ids=None,
-        replaced_attention_mask=None,
-        replaced_token_type_ids=None,
-        replaced_position_ids=None,
         entity_position_ids=None,
         evaluate=None
         ):
@@ -1065,8 +1061,6 @@ class MyModel(BertPreTrainedModel):
             middle = params['middle_linear'](self.dropout(torch.cat(classifier_input, dim=1)))
 
             logits = params['classifier'](self.dropout(F.gelu(middle)))
-            #logits = self.bn2(logits)
-            #logits = params['classifier'](self.dropout(torch.cat(classifier_input, dim=1)))
             #outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
             outputs = (logits,)
 
@@ -1119,3 +1113,17 @@ class MyModel(BertPreTrainedModel):
                 self.update_cnt += 1
 
         return outputs  # if evaluate -> (logits, attentions), else -> (loss, logits)
+
+
+    # For saving model weights
+    def return_averaged_sd(self):
+        #for k, v in self.current_params.items():
+        #    for x, y in zip(v.parameters(), self.accumulated_params[k].parameters()):
+        #        x = y
+        sd = self.state_dict()
+        for k, v in self.current_params.items():
+            for p_name_ in v.state_dict():
+                p_name = '.'.join([k, p_name_])
+                sd[p_name] = self.accumulated_params[k].state_dict()[p_name_]
+        return sd
+

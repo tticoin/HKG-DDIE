@@ -1,0 +1,8 @@
+# Ignore shell files
+*.sh
+
+# Ignore output directory
+outputs/
+
+# Ignore cache directory
+__pycache__/

@@ -83,7 +83,7 @@ class DataTrainingArguments:
         metadata={"help": "The name of the task to train on: " + ", ".join(task_to_keys.keys())},
     )
     max_seq_length: int = field(
-        default=128,
+        default=256,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
             "than this will be truncated, sequences shorter will be padded."
@@ -111,6 +111,17 @@ class DataTrainingArguments:
     )
     validation_dbid_file: Optional[str] = field(
         default=None, metadata={"help": "A npy file containing the validation DrugBank idx data."}
+    )
+
+    kg_emb_file: Optional[str] = field(
+        default='N/A',
+    )
+
+    trained_model_file: Optional[str] = field(
+        default='N/A',
+    )
+    model_args_file: Optional[str] = field(
+        default='N/A',
     )
 
     def __post_init__(self):
@@ -156,7 +167,7 @@ class ModelArguments:
     )
 
     save_model_epoch: Optional[int] = field(
-        default=0, 
+        default=999, 
     )
 
     parameter_averaging: bool = field(
@@ -169,9 +180,6 @@ class ModelArguments:
         default=False,
     )
 
-    kg_emb_file: str = field(
-        default='',
-    )
     baseline: bool = field(
         default=False,
     )
@@ -297,14 +305,6 @@ def main():
     for logits_npy_file in glob.glob(os.path.join(training_args.output_dir, 'logits-epoch:*.npy')):
         os.remove(logits_npy_file)
     
-    # 
-    assert not (model_args.baseline and model_args.use_kg_rep), "Baseline method cant use KG embeddings"
-    assert not (model_args.baseline and model_args.selected_attention_mask), "Baseline method cant use KG embeddings"
-    # 
-    assert model_args.use_cls_rep or model_args.use_mention_rep or model_args.use_kg_rep
-    #
-    assert model_args.combination_method in ('loss', 'cat')
-
     # Load pretrained model and tokenizer
     #
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
@@ -333,17 +333,40 @@ def main():
     #    config=config,
     #    cache_dir=model_args.cache_dir,
     #)
-    model_args.device = training_args.device
-    #model = MyModel(model_args, config)
+
     model = MyModel.from_pretrained(model_args.model_name_or_path, config=config)
-    model.my_init(model_args)
+
+    # Loading trained model parameters
+    if not training_args.do_train and data_args.trained_model_file != 'N/A':
+        with open(data_args.model_args_file, 'r') as f:
+            model_args_dict = json.load(f)
+        for k, v in model_args_dict.items():
+            model_args.__setattr__(k, v)
+        model.init_modules(model_args, data_args.kg_emb_file)
+        model.load_state_dict(torch.load(data_args.trained_model_file))
+    else:
+        model.init_modules(model_args, data_args.kg_emb_file)
+
+    # All parameters initialization for parameter averaging
+    model.init_params(training_args.device)
+
+
+    # Assertion
+    assert not (model_args.baseline and model_args.use_kg_rep), "Baseline method cant use KG embeddings"
+    assert not (model_args.baseline and model_args.selected_attention_mask), "Baseline method cant use KG embeddings"
+    # 
+    assert model_args.use_cls_rep or model_args.use_mention_rep or model_args.use_kg_rep
+    #
+    assert model_args.combination_method in ('loss', 'cat')
+    # 
+    if training_args.do_train: assert model_args.save_model_epoch >= training_args.num_train_epochs
 
 
     # Save Model Arguments
     if not os.path.exists(training_args.output_dir):
         os.makedirs(training_args.output_dir)
-    with open(os.path.join(training_args.output_dir, 'model_args.pkl'), 'wb') as f:
-        pkl.dump(model_args, f)
+    with open(os.path.join(training_args.output_dir, 'model_args.json'), 'w') as f:
+        json.dump(model_args.__dict__, f)
 
 
     # Preprocessing the datasets
@@ -413,7 +436,7 @@ def main():
     max_seq_len = model_args.max_seq_length
 
     ## 
-    kg_emb_table = np.load(model_args.kg_emb_file)
+    kg_emb_table = np.load(data_args.kg_emb_file)
     UNK_idx = len(kg_emb_table)
     ## 
     kg_id_files = {'train': data_args.train_dbid_file, 'validation': data_args.validation_dbid_file}
@@ -514,8 +537,6 @@ def main():
                 'position_ids_w_kg': position_ids_,
             })
 
-        #print(tr_or_ev, msl_error_cnt)
-
         if model_args.selected_attention_mask:
             all_attention_mask = selected_am
         else:
@@ -581,8 +602,9 @@ def main():
                 if epoch_ == model_args.save_model_epoch:
                     config.save_pretrained(os.path.join(training_args.output_dir))
                     tokenizer.save_pretrained(os.path.join(training_args.output_dir))
-                    torch.save(model.state_dict(), 
-                               os.path.join(training_args.output_dir, 'full_model.bin'))
+
+                    sd = model.return_averaged_sd()
+                    torch.save(sd, os.path.join(training_args.output_dir, 'full_model.bin'))
                 break
 
         if data_args.task_name is not None:
@@ -618,32 +640,30 @@ def main():
         )
         #trainer.save_model()  # Saves the tokenizer too for easy upload
 
+    # Evaluation
     eval_results = {}
-    # # Evaluation
-    # eval_results = {}
-    # if training_args.do_eval:
-    #     logger.info("*** Evaluate ***")
+    if training_args.do_eval:
+        logger.info("*** Evaluate ***")
 
-    #     # Loop to handle MNLI double evaluation (matched, mis-matched)
-    #     tasks = [data_args.task_name]
-    #     eval_datasets = [eval_dataset]
-    #     if data_args.task_name == "mnli":
-    #         tasks.append("mnli-mm")
-    #         eval_datasets.append(datasets["validation_mismatched"])
+        # Loop to handle MNLI double evaluation (matched, mis-matched)
+        tasks = [data_args.task_name]
+        eval_datasets = [eval_dataset]
+        if data_args.task_name == "mnli":
+            tasks.append("mnli-mm")
+            eval_datasets.append(datasets["validation_mismatched"])
 
-    #     for eval_dataset, task in zip(eval_datasets, tasks):
-    #         eval_result = trainer.evaluate(eval_dataset=eval_dataset)
+        for eval_dataset, task in zip(eval_datasets, tasks):
+            eval_result = trainer.evaluate(eval_dataset=eval_dataset)
 
-    #         output_eval_file = os.path.join(training_args.output_dir, f"eval_results_{task}.txt")
-    #         if trainer.is_world_process_zero():
-    #             with open(output_eval_file, "w") as writer:
-    #                 logger.info(f"***** Eval results {task} *****")
-    #                 for key, value in eval_result.items():
-    #                     if key == 'eval_logits': continue
-    #                     logger.info(f"  {key} = {value}")
-    #                     writer.write(f"{key} = {value}\n")
-    #             #np.save(os.path.join(training_args.output_dir, 'logits.npy'), eval_result['eval_logits'])
-    #         eval_results.update(eval_result)
+            output_eval_file = os.path.join(training_args.output_dir, f"eval_results_{task}.txt")
+            if trainer.is_world_process_zero():
+                with open(output_eval_file, "w") as writer:
+                    logger.info(f"***** Eval results {task} *****")
+                    for key, value in eval_result.items():
+                        if key == 'eval_logits': continue
+                        logger.info(f"  {key} = {value}")
+                        writer.write(f"{key} = {value}\n")
+            eval_results.update(eval_result)
 
     if training_args.do_predict:
         logger.info("*** Test ***")
