@@ -553,11 +553,6 @@ def main():
         dataset_ = Dataset.from_dict(new_data_dict)
         train_and_eval_dataset.append(dataset_)
 
-        # Save valid inputs
-        if tr_or_ev == 'validation':
-            with open(os.path.join(training_args.output_dir, 'dev_inputs.pkl'), 'wb') as f:
-                pkl.dump(all_inputs, f)
-
     train_dataset = train_and_eval_dataset[0]
     eval_dataset = train_and_eval_dataset[1]
     if model_args.parameter_averaging:
