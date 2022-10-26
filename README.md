@@ -53,7 +53,7 @@ python main.py \
   --kg_emb_file ./weights/PharmaHKG_DistMult_entity.npy \
   --do_eval \
   --trained_model_file ./weights/full_model.bin \
-  --model_args_file ./weights/model_args.pkl \
+  --model_args_file ./weights/model_args.json \
   --model_name_or_path microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract \
   --output_dir ./outputs/foo
 ```
