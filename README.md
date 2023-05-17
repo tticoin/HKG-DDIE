@@ -1,5 +1,5 @@
 # HKG-DDIE
-The implementation of "Integrating heterogeneous knowledge graphs into DDI extraction from the literature"
+The implementation of "[Integrating heterogeneous knowledge graphs into DDI extraction from the literature](https://academic.oup.com/bioinformatics/article/39/1/btac754/6842324)"
 
 ## Requirements
 ```
